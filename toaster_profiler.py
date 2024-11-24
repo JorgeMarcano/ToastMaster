@@ -2,6 +2,7 @@ import time
 from datetime import datetime
 from toaster_ctrl import Toaster
 from tkinter import filedialog
+import pylab as plt
 
 WINDOW = 3
 
@@ -23,6 +24,7 @@ if __name__ == "__main__":
                                                        ("Text files", "*.txt*"),
                                                        ("all files", "*.*")))
     stripped_name = filename.split("/")[-1].split("\\")[-1].split(".")[0]
+
     steps = []
     try:
         with open(filename, 'r') as file:
@@ -41,6 +43,16 @@ if __name__ == "__main__":
             print("Error in parsing file")
             exit()
 
+    X = []
+    Y1 = []
+    Y2 = []
+    plt.ion()
+    figure, ax = plt.subplots()
+    ax.set_autoscale_on(True)
+    ax.autoscale_view(True,True,True)
+    graph, = ax.plot(X, Y1, "bo")
+    graph_goal, = ax.plot(X, Y2, "r+")
+
     with open(f'runs/run_{stripped_name}_{datetime.now().strftime("%y-%m-%d__%H-%M")}.csv', 'w+') as csvfile:
         csvfile.write('Time (s), Temperature (C), Status, Goal (C)\n')
 
@@ -53,7 +65,7 @@ if __name__ == "__main__":
             start_time = time.time()
             is_on = False
             curr_step = 0
-            
+
             for step in steps:
                 next_temp = step[1]
                 next_timestep = step[0]
@@ -76,9 +88,22 @@ if __name__ == "__main__":
                         is_on = True
 
                     csvfile.write(f"{delta}, {curr_temp}, {is_on}, {goal_temp}\n")
+
+                    X.append(delta)
+                    Y1.append(curr_temp)
+                    Y2.append(goal_temp)
+                    graph.set_data(X, Y1)
+                    graph_goal.set_data(X, Y2)
+                    ax.relim()
+                    ax.autoscale_view(True,True,True)
+                    figure.canvas.draw()
+                    figure.canvas.flush_events()
+
                     time.sleep(0.25)
                     delta = time.time() - start_time
 
                 print(f"Done with step {curr_step}")
                 curr_step += 1
 
+    plt.ioff()
+    plt.show()
