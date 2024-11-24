@@ -52,13 +52,20 @@ class Toaster:
     def __exit__(self):
         self.close_serial()
 
-    def in_error(self):
+    def in_error(self, msg=None):
+        if msg != None:
+            print("ERROR: " + msg)
+
         if self.watchdog != None:
             self.watchdog.pause_watchdog()
 
     def begin_ctrl(self):
         if (self.port == None) or (self.watchdog == None):
-            self.in_error()
+            self.in_error("Port or watchdog not initialized, cannot begin")
+            return
+
+        if self.has_begun:
+            self.in_error("Toaster was attempted to begin twice")
             return
 
         self.has_begun = True
@@ -73,7 +80,7 @@ class Toaster:
 
     def send_cmd(self, byte_str, expect_reply=False):
         if (self.port == None) or (not self.has_begun):
-            self.in_error()
+            self.in_error("Port or watchdog not initialized, cannot send cmd")
             return
 
         out_str = byte_str
@@ -81,7 +88,7 @@ class Toaster:
             out_str += b'\n'
 
         with serial_mutex:
-            self.port.write(out_string)
+            self.port.write(out_str)
             if expect_reply:
                 reply = self.port.read_until(b'\n')
                 #vals = struct.unpack('<hff', reply[:-1])
@@ -92,12 +99,15 @@ class Toaster:
     def stop(self):
         self.send_cmd(b'o')
 
-    def read(self):
+    def read(self, is_print=True):
         vals = self.send_cmd(b'r', True)
         
-        print(f'ADC reading: {vals[0]}')
-        print(f'ADC voltage: {vals[1]}')
-        print(f'Calculatged temperature: {vals[2]}')
+        if is_print:
+            print(f'ADC reading: {vals[0]}')
+            print(f'ADC voltage: {vals[1]}')
+            print(f'Calculatged temperature: {vals[2]}')
+
+        return vals
 
     def on(self, is_slow=False):
         if is_slow:
@@ -128,38 +138,57 @@ class Toaster:
         
 if __name__ == "__main__":
 
-    controller = Toaster('COM3')
+    with Toaster('COM3') as controller:
+        controller.begin_ctrl()
+        while True:
+            user_input = input('> ')
 
-    while True:
-        user_input = input('> ')
+            args = user_input.split(' ')
 
-        args = user_input.split(' ')
+            match user_input[0]:
+                case 'o':  # Turn off command, nothing needed except the character itself
+                    controller.stop()
+                case 't':
+                    if len(args) < 2:
+                        print('Not enough values for command')
+                        continue
+                    controller.set_temp(float(args[1]))
+                case 'c':
+                    if len(args) < 2:
+                        print('Not enough values for command')
+                        continue
+                    controller.set_calibration(float(args[1]))
+                case 'g':
+                    if len(args) < 2:
+                        print('Not enough values for command')
+                        continue
+                    controller.set_gain(float(args[1]))
+                case 'r':
+                    controller.read()
+                case 'x':
+                    controller.stop()
+                    with serial_mutex:
+                        exit()
+                case 'm':
+                    if len(args) < 3:
+                        print('Not enough values for command')
+                        continue
+                    is_slow = False
+                    if args[1] == 'slow':
+                        is_slow = True
+                    elif args[1] == 'fast':
+                        is_slow = False
+                    else:
+                        print('Input not recognized')
+                        continue
 
-        match user_input[0]:
-            case 'o':  # Turn off command, nothing needed except the character itself
-                controller.stop()
-            case 't' | 'g' | 'c':
-                if len(args) < 2:
-                    print('Not enough values for command')
-                    continue
-                floatval = float(args[1])
-                float_bytes = struct.pack("<f", floatval)
-                out_string += float_bytes
-            case 'r':
-                controller.read()
-            case 'x':
-                with serial_mutex:
-                    exit()
-            case 'm':
-                if args[1] == 'slow':
-                    out_string += b'\1'
-                elif args[1] == 'fast':
-                    out_string += b'\2'
-                else:
+                    if args[2] == '0':
+                        controller.off(is_slow)
+                    elif args[2] == '1':
+                        controller.on(is_slow)
+                    else:
+                        print('Input not recognized')
+                        continue
+                case _:
                     print('Input not recognized')
                     continue
-                out_string += struct.pack('<b', int(args[2]) + 1)
-                #expect_reply = True
-            case _:
-                print('Input not recognized')
-                continue
