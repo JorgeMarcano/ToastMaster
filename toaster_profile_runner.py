@@ -4,11 +4,18 @@ from toaster_ctrl import Toaster
 from tkinter import filedialog
 import matplotlib.pyplot as plt
 
+from threading import Thread
+
+HYSTERESIS = 3
+
 fig = plt.figure()
 temp_ax = fig.add_subplot(1, 2, 1)
 step_ax = fig.add_subplot(1, 2, 2)
 
-WINDOW = 3
+def sound_alarm():
+    while True:
+        print('OPEN OVEN DOOR!\a')
+        time.sleep(1)
 
 def controller_init(controller):
     controller.begin_ctrl()
@@ -19,7 +26,7 @@ def controller_init(controller):
     time.sleep(0.1)
     controller.profile_clear()
     time.sleep(0.1)
-    controller.set_hysteresis(3.0)
+    controller.set_hysteresis(HYSTERESIS)
     time.sleep(0.1)
 
 def do_1_iteration(controller, data):
@@ -28,6 +35,9 @@ def do_1_iteration(controller, data):
     temperature_degc = vals[2] / 1000.0
     profile_step = vals[3]
     desired_temperature_degc = vals[4] / 1000.0
+
+    if abs(temperature_degc - desired_temperature_degc) > HYSTERESIS:
+        print('WARNING! TEMPERATURE OUTSIDE DESIRED RANGE\a')
     
     data[0].append(time_ms)
     data[1].append(temperature_degc)
@@ -35,11 +45,13 @@ def do_1_iteration(controller, data):
     data[3].append(profile_step)
 
     temp_ax.clear()
-    temp_ax.plot(data[0], data[1])
-    temp_ax.plot(data[0], data[2])
+    temp_ax.plot(data[0], data[1], color='r')
+    temp_ax.plot(data[0], data[2], color='b')
+    temp_ax.plot(data[0], [item + HYSTERESIS for item in data[2]], color='0.8', linestyle='dashed', linewidth=1)
+    temp_ax.plot(data[0], [item - HYSTERESIS for item in data[2]], color='0.8', linestyle='dashed', linewidth=1)
 
     step_ax.clear()
-    step_ax.plot(data[0], data[3])
+    step_ax.plot(data[0], data[3], color='tab:orange')
 
     fig.canvas.draw()
     fig.canvas.flush_events()
@@ -79,6 +91,8 @@ if __name__ == "__main__":
 
     plt.ion()
 
+    alarm_thread = Thread(target=sound_alarm, daemon=True)
+
     # Setup the Toaster
     with Toaster('COM3') as controller:
         controller_init(controller)
@@ -94,8 +108,13 @@ if __name__ == "__main__":
             profile_step = do_1_iteration(controller, data)
             time.sleep(1)
 
+            if profile_step == len(steps) - 1:
+                print('WARNING: OPEN THE DOOR!!\a')
+
             if profile_step < 0:
                 break
+
+        alarm_thread.start()
         
         # Take some readings after profile officially finishes
         for i in range(30):
