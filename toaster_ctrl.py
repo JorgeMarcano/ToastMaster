@@ -12,13 +12,13 @@ class Watchdog:
         self.is_watchdoging = False
         self.end = False
         self.mutex = serial_mutex
-        self.period = 1 if (period == None) else period
+        self.period = 0.8 if (period == None) else period
         self.port = port
 
     def wakeup(self):
         while not self.end:
-            with self.mutex:
-                if self.is_watchdoging:
+            if self.is_watchdoging:
+                with self.mutex:
                     self.port.write(b'k\n')
             time.sleep(self.period)
 
@@ -92,20 +92,21 @@ class Toaster:
             if expect_reply:
                 reply = self.port.read_until(b'\n')
                 #vals = struct.unpack('<hff', reply[:-1])
-                vals = [float(val) for val in reply[:-1].decode().split(',')]
+                vals = [int(val) for val in reply[:-1].decode().split(',')]
                 return vals
-            return []
 
     def stop(self):
         self.send_cmd(b'o')
 
-    def read(self, is_print=True):
-        vals = self.send_cmd(b'r', True)
+    def read(self, do_print=True):
+        vals = self.send_cmd(b'r', expect_reply=True)
         
-        if is_print:
+        if do_print:
             print(f'ADC reading: {vals[0]}')
             print(f'ADC voltage: {vals[1]}')
-            print(f'Calculatged temperature: {vals[2]}')
+            print(f'Calculated temperature: {vals[2] / 1000.0}')
+            print(f'Current profile step: {vals[3]}')
+            print(f'Desired temperature: {vals[4] / 1000.0}')
 
         return vals
 
@@ -135,6 +136,25 @@ class Toaster:
         cmd = b'c'
         cmd += struct.pack("<f", curr_temp)
         self.send_cmd(cmd)
+
+    def set_hysteresis(self, hysteresis):
+        cmd = b'h'
+        cmd += struct.pack('<f', hysteresis)
+        self.send_cmd(cmd)
+
+    def profile_add_point(self, time_ms, temp_degc):
+        cmd = b'pa'
+        cmd += struct.pack('<if', time_ms, temp_degc)
+        self.send_cmd(cmd)
+
+    def profile_clear(self):
+        cmd = b'pc'
+        self.send_cmd(cmd)
+
+    def profile_run(self):
+        cmd = b'pr'
+        self.send_cmd(cmd)
+
         
 if __name__ == "__main__":
 

@@ -38,7 +38,7 @@
 
 // Define array sizes
 #define IO_BUF_SIZE 100
-#define MAX_PROFILE_POINTS 10
+#define MAX_PROFILE_POINTS 40
 
 // Define required watchdog timer interval.
 // After this time, the oven will automatically shut off.
@@ -72,6 +72,7 @@ char io_buf[IO_BUF_SIZE];
 int watchdog_last_update_time_ms;
 int current_time_ms;
 float current_temperature_degc;
+float desired_temperature_degc;
 
 Profile the_profile;
 
@@ -83,14 +84,13 @@ float hysteresis_degc;
 
 void disable_profile() {
   the_profile.running = false;
-  the_profile.current_index = 0;
+  the_profile.current_index = -1;
 }
 
 void reset_profile() {
   the_profile.max_index = 0;
-  the_profile.current_index = 0;
   the_profile.start_time_ms = -1;
-  the_profile.running = false;
+  disable_profile();
 }
 
 void turn_oven_off() {
@@ -128,6 +128,7 @@ void setup() {
   // Initialize calibrated temperature to 20 by default
   calibrated_voltage_v = read_adc();
   calibrated_temperature_degc = DEFAULT_TEMP_DEGC;
+  desired_temperature_degc = DEFAULT_TEMP_DEGC;
 
   // Start with oven off
   turn_oven_off();
@@ -142,7 +143,7 @@ void loop() {
   float adc_voltage_v = adc_to_voltage(adc_reading);
   int adc_voltage_mv = (int)(1000.0*adc_voltage_v);
   current_temperature_degc = voltage_to_temperature(adc_voltage_v);
-  unsigned int current_temperature_mdegc = (unsigned int)(1000.0*current_temperature_degc);
+  int current_temperature_mdegc = (int)(1000.0*current_temperature_degc);
   current_time_ms = millis();
 
   // Check for comms
@@ -166,14 +167,18 @@ void loop() {
           calibrated_voltage_v = adc_voltage_v;
           calibrated_temperature_degc = *(float*)&io_buf[1];
           break;
-        case 'r':  // Report reading & temperature to host
-          sprintf(io_buf, "%d,%d,%u\n", adc_reading, adc_voltage_mv, current_temperature_mdegc);
+        case 'r':  // Report reading, temperature, & profile status to host
+          int desired_temperature_mdegc = (int)(desired_temperature_degc * 1000.0);
+          sprintf(io_buf, "%d,%d,%d,%d,%d\n", adc_reading, adc_voltage_mv, current_temperature_mdegc, the_profile.current_index, desired_temperature_mdegc);
           Serial.print(io_buf);
           Serial.flush();
           break;
         case 'm':  // Manual relay control
           disable_profile();  // End running profile if there is one
-          digitalWrite(*(byte*)&io_buf[1] == 1 ? SLOW_RELAY_EN : FAST_RELAY_EN, *(byte*)&io_buf[2] == 1 ? LOW : HIGH);
+          byte relay = *(byte*)&io_buf[1];
+          byte state = *(byte*)&io_buf[2];
+          if (relay == 1) digitalWrite(SLOW_RELAY_EN, state == 1 ? LOW : HIGH);
+          else digitalWrite(FAST_RELAY_EN, state == 1 ? LOW : HIGH);
           break;
         case 'p':  // Profile control, read second character
           if (the_profile.running) break;  // Disallow modifying the profile while it is running
@@ -210,11 +215,11 @@ void loop() {
 
     if (the_profile.current_index >= the_profile.max_index) {
       // End of the profile, cool down as fast as possible and stop the profile from running.
+      desired_temperature_degc = 20;
       digitalWrite(FAST_RELAY_EN, LOW);
       disable_profile();
     } else {
       // Continue controlling the profile
-      float desired_temperature_degc;
       float prev_temp_degc;
       int prev_time_ms;
 

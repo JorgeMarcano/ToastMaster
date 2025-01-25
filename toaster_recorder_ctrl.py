@@ -25,7 +25,7 @@ with Toaster('COM3') as controller:
                 total_vals = [0, 0, 0]
 
                 for i in range(SAMPLING_RATE_HZ):
-                    vals = controller.read(is_print=False)
+                    vals = controller.read(do_print=False)
                     total_vals = [a + b for a, b in zip(total_vals, vals)]
                     time.sleep(1.0 / SAMPLING_RATE_HZ)
 
