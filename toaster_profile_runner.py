@@ -30,14 +30,14 @@ def controller_init(controller):
     time.sleep(0.1)
 
 def do_1_iteration(controller, data):
-    vals = controller.read(do_print=False)
+    vals = controller.read()#do_print=False)
     time_ms = time.time() - start_time
     temperature_degc = vals[2] / 1000.0
     profile_step = vals[3]
     desired_temperature_degc = vals[4] / 1000.0
 
-    if abs(temperature_degc - desired_temperature_degc) > HYSTERESIS:
-        print('WARNING! TEMPERATURE OUTSIDE DESIRED RANGE\a')
+    # if abs(temperature_degc - desired_temperature_degc) > HYSTERESIS:
+    #     print('WARNING! TEMPERATURE OUTSIDE DESIRED RANGE\a')
     
     data[0].append(time_ms)
     data[1].append(temperature_degc)
@@ -90,15 +90,21 @@ if __name__ == "__main__":
     data = [[] for _ in range(4)]
 
     plt.ion()
+    plt.show()
 
     alarm_thread = Thread(target=sound_alarm, daemon=True)
 
     # Setup the Toaster
-    with Toaster('COM3') as controller:
+    controller = Toaster('COM6')
+    with controller:
         controller_init(controller)
+
+        print("initialized")
 
         for step in steps:
             controller.profile_add_point(step[0] * 1000, step[1])
+
+        print("profile set")
 
         start_time = time.time()
         controller.profile_run()

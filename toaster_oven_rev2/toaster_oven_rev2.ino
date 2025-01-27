@@ -51,7 +51,7 @@
 
 // Profile point struct, containing a time and temperature
 typedef struct ProfilePoint {
-  int time_after_start_ms;
+  unsigned long time_after_start_ms;
   float target_temp_degc;
 } ProfilePoint;
 
@@ -62,19 +62,19 @@ typedef struct Profile {
   ProfilePoint points[MAX_PROFILE_POINTS];
   int current_index;
   int max_index;
-  int start_time_ms;
+  unsigned long start_time_ms;
   bool running;
 } Profile;
 
 
 // Program variables
 char io_buf[IO_BUF_SIZE];
-int watchdog_last_update_time_ms;
-int current_time_ms;
+unsigned long watchdog_last_update_time_ms;
+unsigned long current_time_ms;
 float current_temperature_degc;
 float desired_temperature_degc;
 
-Profile the_profile;
+Profile the_profile = {0};
 
 // User-set variables
 float calibrated_voltage_v;
@@ -100,7 +100,7 @@ void turn_oven_off() {
   disable_profile();
 }
 
-float adc_to_voltage(int adc_in) {
+float adc_to_voltage(long adc_in) {
   return ((float) adc_in * 5.0) / 1023.0;
 }
 
@@ -139,12 +139,16 @@ void setup() {
 
 void loop() {
   // Update adc reading & current time
-  int adc_reading = analogRead(THERM_IN);
+  long adc_reading = analogRead(THERM_IN);
   float adc_voltage_v = adc_to_voltage(adc_reading);
-  int adc_voltage_mv = (int)(1000.0*adc_voltage_v);
+  long adc_voltage_mv = (long)(1000.0*adc_voltage_v);
   current_temperature_degc = voltage_to_temperature(adc_voltage_v);
-  int current_temperature_mdegc = (int)(1000.0*current_temperature_degc);
+  long current_temperature_mdegc = (long)(1000.0*current_temperature_degc);
   current_time_ms = millis();
+  long desired_temperature_mdegc;
+  byte relay;
+  byte state;
+  char* temp_io;
 
   // Check for comms
   if (Serial.available()) {
@@ -165,18 +169,19 @@ void loop() {
           break;
         case 'c':  // Calibrate temperature, expect ~20°C
           calibrated_voltage_v = adc_voltage_v;
-          calibrated_temperature_degc = *(float*)&io_buf[1];
+          temp_io = io_buf+1;
+          calibrated_temperature_degc = *(float*)temp_io;
           break;
         case 'r':  // Report reading, temperature, & profile status to host
-          int desired_temperature_mdegc = (int)(desired_temperature_degc * 1000.0);
-          sprintf(io_buf, "%d,%d,%d,%d,%d\n", adc_reading, adc_voltage_mv, current_temperature_mdegc, the_profile.current_index, desired_temperature_mdegc);
+          desired_temperature_mdegc = (long) desired_temperature_degc * 1000;
+          sprintf(io_buf, "%ld,%ld,%ld,%d,%ld\n", adc_reading, adc_voltage_mv, current_temperature_mdegc, the_profile.current_index, desired_temperature_mdegc);
           Serial.print(io_buf);
           Serial.flush();
           break;
         case 'm':  // Manual relay control
           disable_profile();  // End running profile if there is one
-          byte relay = *(byte*)&io_buf[1];
-          byte state = *(byte*)&io_buf[2];
+          relay = *(byte*)&io_buf[1];
+          state = *(byte*)&io_buf[2];
           if (relay == 1) digitalWrite(SLOW_RELAY_EN, state == 1 ? LOW : HIGH);
           else digitalWrite(FAST_RELAY_EN, state == 1 ? LOW : HIGH);
           break;
@@ -185,14 +190,21 @@ void loop() {
           switch (io_buf[1]) {
             case 'a':  // Add a point to the profile
               if (the_profile.max_index == MAX_PROFILE_POINTS) break;  // Don't add points beyond max
-              the_profile.points[the_profile.max_index++] = *(ProfilePoint*)&io_buf[2];
+              temp_io = io_buf+2;
+//              the_profile.points[the_profile.max_index].time_after_start_ms = ((ProfilePoint*)temp_io)->time_after_start_ms;
+              the_profile.points[the_profile.max_index++] = *(ProfilePoint*)temp_io;
+              Serial.println(the_profile.points[the_profile.max_index-1].time_after_start_ms);
+              break;
             case 'c':  // Clear the profile
               reset_profile();
+              break;
             case 'r':  // Run the profile
               digitalWrite(SLOW_RELAY_EN, HIGH);
               the_profile.current_index = 0;
               the_profile.start_time_ms = current_time_ms;
               the_profile.running = true;
+              Serial.println("STARTING");
+              break;
           }
           break;
       }
@@ -207,7 +219,7 @@ void loop() {
     // Watchdog expired, open relays to turn off toaster
     turn_oven_off();
   } else if (the_profile.running) {
-    int time_since_start_ms = current_time_ms - the_profile.start_time_ms;
+    unsigned long time_since_start_ms = current_time_ms - the_profile.start_time_ms;
 
     if (time_since_start_ms >= the_profile.points[the_profile.current_index].time_after_start_ms) {
       the_profile.current_index += 1;
@@ -221,7 +233,7 @@ void loop() {
     } else {
       // Continue controlling the profile
       float prev_temp_degc;
-      int prev_time_ms;
+      unsigned long prev_time_ms;
 
       if (the_profile.current_index == 0) {
         prev_temp_degc = 20.0;
@@ -233,7 +245,7 @@ void loop() {
       }
 
       ProfilePoint target_point = the_profile.points[the_profile.current_index];
-      int next_time_ms = target_point.time_after_start_ms;
+      unsigned long next_time_ms = target_point.time_after_start_ms;
       float next_temp_degc = target_point.target_temp_degc;
       float t = (float)(time_since_start_ms - prev_time_ms) / (float)(next_time_ms - prev_time_ms);
       desired_temperature_degc = next_temp_degc * t + prev_temp_degc * (1 - t);  // Lerp temperature

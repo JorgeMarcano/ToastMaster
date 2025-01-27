@@ -28,6 +28,7 @@ class Watchdog:
 
         self.keep_alive_child = threading.Thread(target=self.wakeup, daemon=True)
         self.keep_alive_child.start()
+        self.is_watchdoging = True
 
     def pause_watchdog(self):
         self.is_watchdoging = False
@@ -49,7 +50,7 @@ class Toaster:
         self.port = serial.Serial(self.comport, baudrate = 38400, timeout=5)
         self.watchdog = Watchdog(self.port)
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.close_serial()
 
     def in_error(self, msg=None):
@@ -92,7 +93,7 @@ class Toaster:
             if expect_reply:
                 reply = self.port.read_until(b'\n')
                 #vals = struct.unpack('<hff', reply[:-1])
-                vals = [int(val) for val in reply[:-1].decode().split(',')]
+                vals = [int(val) for val in reply.decode().strip().split(',')]
                 return vals
 
     def stop(self):
@@ -146,6 +147,7 @@ class Toaster:
         cmd = b'pa'
         cmd += struct.pack('<if', time_ms, temp_degc)
         self.send_cmd(cmd)
+        print(self.port.read_until(b'\n'))
 
     def profile_clear(self):
         cmd = b'pc'
@@ -154,6 +156,7 @@ class Toaster:
     def profile_run(self):
         cmd = b'pr'
         self.send_cmd(cmd)
+        print(self.port.read_until(b'\n'))
 
         
 if __name__ == "__main__":
