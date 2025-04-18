@@ -49,6 +49,7 @@ class Toaster:
     def __enter__(self):
         self.port = serial.Serial(self.comport, baudrate = 38400, timeout=5)
         self.watchdog = Watchdog(self.port)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close_serial()
@@ -79,7 +80,7 @@ class Toaster:
         if self.port != None:
             self.port.close()
 
-    def send_cmd(self, byte_str, expect_reply=False):
+    def send_cmd(self, byte_str, expect_ok=True):
         if (self.port == None) or (not self.has_begun):
             self.in_error("Port or watchdog not initialized, cannot send cmd")
             return
@@ -90,17 +91,18 @@ class Toaster:
 
         with serial_mutex:
             self.port.write(out_str)
-            if expect_reply:
-                reply = self.port.read_until(b'\n')
-                #vals = struct.unpack('<hff', reply[:-1])
-                vals = [int(val) for val in reply.decode().strip().split(',')]
-                return vals
+
+            reply = self.port.read_until(b'\n')
+            if expect_ok and reply != b'ok\n':
+                print('Non-ok message received!!')
+            return reply
 
     def stop(self):
         self.send_cmd(b'o')
 
     def read(self, do_print=True):
-        vals = self.send_cmd(b'r', expect_reply=True)
+        reply = self.send_cmd(b'r', expect_ok=False)
+        vals = [int(val) for val in reply[:-1].decode().strip().split(',')]
         
         if do_print:
             print(f'ADC reading: {vals[0]}')

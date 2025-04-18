@@ -154,6 +154,7 @@ void loop() {
   if (Serial.available()) {
     Serial.readBytesUntil('\n', io_buf, IO_BUF_SIZE);
     // Process input
+    bool io_buf_repopulated = false;
     {
       switch (io_buf[0]) {
         case 'k':  // Keep-alive signal, do nothing
@@ -175,8 +176,7 @@ void loop() {
         case 'r':  // Report reading, temperature, & profile status to host
           desired_temperature_mdegc = (long) desired_temperature_degc * 1000;
           sprintf(io_buf, "%ld,%ld,%ld,%d,%ld\n", adc_reading, adc_voltage_mv, current_temperature_mdegc, the_profile.current_index, desired_temperature_mdegc);
-          Serial.print(io_buf);
-          Serial.flush();
+          io_buf_repopulated = true;
           break;
         case 'm':  // Manual relay control
           disable_profile();  // End running profile if there is one
@@ -212,6 +212,13 @@ void loop() {
 
     // Comms received, reset watchdog
     watchdog_last_update_time_ms = current_time_ms;
+
+    // Send ack back to host
+    if (!io_buf_repopulated) {
+      sprintf(io_buf, "ok\n");
+    }
+    Serial.print(io_buf);
+    Serial.flush();
   }
 
   // Check watchdog
