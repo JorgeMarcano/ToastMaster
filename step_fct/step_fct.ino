@@ -95,7 +95,7 @@ void loop() {
   if (curr_t - last_switch_t > STEP_DUTY_PERIOD_ms) {
     if (oven_state) digitalWrite(OVEN_CTRL, LOW);
     else digitalWrite(OVEN_CTRL, HIGH);
-    oven_state = oven_state ? 0 : 1;
+    oven_state = !oven_state;
 
     last_switch_t += STEP_DUTY_PERIOD_ms;
   }
