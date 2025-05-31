@@ -49,6 +49,8 @@
 #define DEFAULT_TEMP_DEGC 20.0
 #define DEFAULT_HYSTERESIS_DEGC 3.0
 
+#define AVERAGING 10
+
 // Profile point struct, containing a time and temperature
 typedef struct ProfilePoint {
   unsigned long time_after_start_ms;
@@ -74,6 +76,10 @@ unsigned long current_time_ms;
 float current_temperature_degc;
 float desired_temperature_degc;
 
+uint8_t counter;
+float temp_sum;
+float last_avg;
+
 Profile the_profile = {0};
 
 // User-set variables
@@ -90,6 +96,8 @@ void disable_profile() {
 void reset_profile() {
   the_profile.max_index = 0;
   the_profile.start_time_ms = -1;
+  counter = AVERAGING;
+  temp_sum = 0;
   disable_profile();
 }
 
@@ -174,7 +182,7 @@ void loop() {
           calibrated_temperature_degc = *(float*)temp_io;
           break;
         case 'r':  // Report reading, temperature, & profile status to host
-          desired_temperature_mdegc = (long) desired_temperature_degc * 1000;
+          desired_temperature_mdegc = (long) desired_temperature_degc * 1000; //(long) (last_avg * 1000.0)
           sprintf(io_buf, "%ld,%ld,%ld,%d,%ld\n", adc_reading, adc_voltage_mv, current_temperature_mdegc, the_profile.current_index, desired_temperature_mdegc);
           io_buf_repopulated = true;
           break;
@@ -222,7 +230,7 @@ void loop() {
   }
 
   // Check watchdog
-  if (current_time_ms - watchdog_last_update_time_ms >= 1000 * WATCHDOG_TIMER_S) {
+  if (current_time_ms - watchdog_last_update_time_ms >= 1000 * WATCHDOG_TIMER_S && false) {
     // Watchdog expired, open relays to turn off toaster
     turn_oven_off();
   } else if (the_profile.running) {
@@ -237,7 +245,14 @@ void loop() {
       desired_temperature_degc = 20;
       digitalWrite(FAST_RELAY_EN, LOW);
       disable_profile();
+    } else if (counter) {
+      temp_sum += current_temperature_degc;
+      counter--;
     } else {
+      last_avg = temp_sum / AVERAGING;
+      current_temperature_degc = last_avg;
+      counter = AVERAGING;
+      temp_sum = 0;
       // Continue controlling the profile
       float prev_temp_degc;
       unsigned long prev_time_ms;

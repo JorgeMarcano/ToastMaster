@@ -4,7 +4,7 @@ from toaster_ctrl import Toaster
 
 SAMPLING_RATE_HZ = 10
 
-with Toaster('COM3') as controller:
+with Toaster('COM6') as controller:
     controller.begin_ctrl()
     time.sleep(0.1)
     controller.set_gain(-150.0)

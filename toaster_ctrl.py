@@ -20,6 +20,11 @@ class Watchdog:
             if self.is_watchdoging:
                 with self.mutex:
                     self.port.write(b'k\n')
+                    
+                    reply = self.port.read_until(b'\n')
+                    if (reply != b'ok\n'):
+                        print("Problem with Watchdog reply")
+                        
             time.sleep(self.period)
 
     def start_watchdog(self):

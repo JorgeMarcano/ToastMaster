@@ -20,9 +20,9 @@ def sound_alarm():
 def controller_init(controller):
     controller.begin_ctrl()
     time.sleep(0.1)
-    controller.set_gain(-150.0)
+    controller.set_gain(-162.6)
     time.sleep(0.1)
-    controller.set_calibration(20.0)
+    controller.set_calibration(float(input("Temp ? ")))
     time.sleep(0.1)
     controller.profile_clear()
     time.sleep(0.1)
