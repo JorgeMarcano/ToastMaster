@@ -3,7 +3,7 @@
 #define SPI_CLK   13
 #define OVEN_CTRL 2
 
-#define SAMPLE_RATE 250
+#define SAMPLE_RATE_ms 250
 
 //#define USE_LIB
 
@@ -17,7 +17,10 @@ typedef unsigned long ulong;
 
 ulong t0;
 ulong curr_t;
-ulong last_t;
+ulong last_sample_t;
+ulong last_switch_t;
+
+int oven_state;
 
 float get_temp() {
 #ifdef USE_LIB
@@ -69,20 +72,31 @@ void setup() {
   Serial.print(", ");
   Serial.println(get_temp());
   
+  oven_state = 1;
   digitalWrite(OVEN_CTRL, HIGH);
 
   t0 = millis();
   last_t = t0;
 }
 
+#define STEP_DUTY_PERIOD_ms 500
+
 void loop() {
   // put your main code here, to run repeatedly:
   curr_t = millis();
-  if (curr_t - last_t > SAMPLE_RATE) {
+  if (curr_t - last_sample_t > SAMPLE_RATE_ms) {
     Serial.print((curr_t - t0)/1000.0);
     Serial.print(", ");
     Serial.println(get_temp());
 
-    last_t = curr_t;
+    last_t += SAMPLE_RATE_ms;
+  }
+
+  if (curr_t - last_switch_t > STEP_DUTY_PERIOD_ms) {
+    if (oven_state) digitalWrite(OVEN_CTRL, LOW);
+    else digitalWrite(OVEN_CTRL, HIGH);
+    oven_state = oven_state ? 0 : 1;
+
+    last_switch_t += STEP_DUTY_PERIOD_ms;
   }
 }
